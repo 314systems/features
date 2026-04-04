@@ -132,7 +132,7 @@ pkg_mgr_update() {
                     set +e
                         stderr_messages=$(${PKG_MGR_CMD} -q check-update 2>&1)
                         rc=$?
-                        # centos 7 sometimes returns a status of 100 when it apears to work.
+                        # centos 7 sometimes returns a status of 100 when it appears to work.
                         if [ $rc != 0 ] && [ $rc != 100 ]; then
                             echo "(Error) ${PKG_MGR_CMD} check-update produced the following error message(s):"
                             echo "${stderr_messages}"
@@ -199,7 +199,7 @@ find_version_from_git_tags() {
 
 install_yarn() {
     if [ "${ADJUSTED_ID}" = "debian" ] && [ "${INSTALL_YARN_USING_APT}" = "true" ]; then
-        # for backward compatiblity with existing devcontainer features, install yarn
+        # for backward compatibility with existing devcontainer features, install yarn
         # via apt-get on Debian systems
         if ! type yarn >/dev/null 2>&1; then
             # Import key safely (new method rather than deprecated apt-key approach) and install
@@ -235,7 +235,7 @@ install_yarn() {
 }
 
 # Mariner does not have awk installed by default, this can cause
-# problems is username is auto* and later when we try to install
+# problems if the username is auto* and later when we try to install
 # node via npm.
 if ! type awk >/dev/null 2>&1; then
     check_packages awk
@@ -299,7 +299,7 @@ fi
 
 find_version_from_git_tags NVM_VERSION "https://github.com/nvm-sh/nvm"
 
-# Install snipppet that we will run as the user
+# Install snippet that we will run as the user
 nvm_install_snippet="$(cat << EOF
 set -e
 umask 0002
@@ -336,7 +336,7 @@ usermod -a -G nvm ${USERNAME}
 
 # Install nvm (which also installs NODE_VERSION), otherwise
 # use nvm to install the specified node version. Always use
-# umask 0002 so both the owner so that everything is u+rw,g+rw
+# umask 0002 so that everything is u+rw,g+rw for both owner and group
 umask 0002
 if [ ! -d "${NVM_DIR}" ]; then
     # Create nvm dir, and set sticky bit
@@ -363,7 +363,7 @@ fi
 # Additional node versions to be installed but not be set as
 # default we can assume the nvm is the group owner of the nvm
 # directory and the sticky bit on directories so any installed
-# files will have will have the correct ownership (nvm)
+# files will have the correct ownership (nvm)
 if [ ! -z "${ADDITIONAL_VERSIONS}" ]; then
     OLDIFS=$IFS
     IFS=","
