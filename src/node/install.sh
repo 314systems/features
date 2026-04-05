@@ -261,7 +261,7 @@ fi
 # Ensure apt is in non-interactive to avoid prompts
 export DEBIAN_FRONTEND=noninteractive
 
-if ([[ -n "${VERSION_CODENAME}" ]] && [[ "bionic" = *"${VERSION_CODENAME}"* ]]) || [[ "rhel7" = *"${ADJUSTED_ID}${MAJOR_VERSION_ID}"* ]]; then
+if { [[ -n "${VERSION_CODENAME}" ]] && [[ "bionic" = *"${VERSION_CODENAME}"* ]]; } || [[ "rhel7" = *"${ADJUSTED_ID}${MAJOR_VERSION_ID}"* ]]; then
     node_major_version=$(echo "${NODE_VERSION}" | cut -d . -f 1)
     if [[ "${node_major_version}" -ge 18 ]] || [[ "${NODE_VERSION}" = "lts" ]] || [[ "${NODE_VERSION}" = "latest" ]]; then
         echo "(!) Unsupported distribution version '${VERSION_CODENAME}' for Node >= 18. Details: https://github.com/nodejs/node/issues/42351#issuecomment-1068424442"
