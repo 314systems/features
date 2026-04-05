@@ -31,7 +31,7 @@ fi
 # Bring in ID, ID_LIKE, VERSION_ID, VERSION_CODENAME
 source /etc/os-release
 # Get an adjusted ID independent of distro variants
-MAJOR_VERSION_ID=$(echo "${VERSION_ID}" | cut -d . -f 1)
+MAJOR_VERSION_ID="${VERSION_ID%%.*}"
 if [[ $ID == debian || ${ID_LIKE-} == debian ]]; then
     ADJUSTED_ID="debian"
 elif [[ $ID == rhel || $ID == fedora || $ID == mariner || ${ID_LIKE-} == *rhel* || ${ID_LIKE-} == *fedora* || ${ID_LIKE-} == *mariner* ]]; then
@@ -89,25 +89,25 @@ echo "export PATH=${PATH//$(sh -lc 'echo $PATH')/\$PATH}" >/etc/profile.d/00-res
 chmod +x /etc/profile.d/00-restore-env.sh
 
 updaterc() {
-    local _bashrc
-    local _zshrc
+    local system_bashrc
+    local system_zshrc
     if [[ $UPDATE_RC == true ]]; then
         case $ADJUSTED_ID in
         debian)
-            _bashrc=/etc/bash.bashrc
-            _zshrc=/etc/zsh/zshrc
+            system_bashrc=/etc/bash.bashrc
+            system_zshrc=/etc/zsh/zshrc
             ;;
         rhel)
-            _bashrc=/etc/bashrc
-            _zshrc=/etc/zshrc
+            system_bashrc=/etc/bashrc
+            system_zshrc=/etc/zshrc
             ;;
         esac
-        echo "Updating ${_bashrc} and ${_zshrc}..."
-        if [[ "$(cat ${_bashrc})" != *"$1"* ]]; then
-            echo -e "$1" >>"${_bashrc}"
+        echo "Updating ${system_bashrc} and ${system_zshrc}..."
+        if [[ "$(cat ${system_bashrc})" != *"$1"* ]]; then
+            echo -e "$1" >>"${system_bashrc}"
         fi
-        if [[ -f "${_zshrc}" ]] && [[ "$(cat ${_zshrc})" != *"$1"* ]]; then
-            echo -e "$1" >>"${_zshrc}"
+        if [[ -f "${system_zshrc}" ]] && [[ "$(cat ${system_zshrc})" != *"$1"* ]]; then
+            echo -e "$1" >>"${system_zshrc}"
         fi
     fi
 }
@@ -197,40 +197,96 @@ find_version_from_git_tags() {
     echo "${variable_name}=${!variable_name}"
 }
 
+# Helper: Run a command as a user with NVM environment
+# Usage: run_as_user_with_nvm "nvm install 18"
+run_as_user_with_nvm() {
+    su "${USERNAME}" -c "umask 0002 && source '${NVM_DIR}/nvm.sh' && $*"
+}
+
+# Helper: Run a command as a user with umask
+# Usage: run_as_user "some command"
+run_as_user() {
+    su "${USERNAME}" -c "umask 0002 && $*"
+}
+
+# Helper: Check if command exists in current shell with NVM
+# Usage: check_cmd_with_nvm "yarn"
+check_cmd_with_nvm() {
+    bash -c "source '${NVM_DIR}/nvm.sh' && command -v $1 &>/dev/null"
+}
+
+# Helper: Check if current OS is unsupported for Node >= 18
+is_unsupported_os_for_node18() {
+    [[ "$VERSION_CODENAME" == *"bionic"* ]] || \
+    [[ "${ADJUSTED_ID}${MAJOR_VERSION_ID}" == "rhel7" ]]
+}
+
+# Helper: Get major version from version string
+# Usage: get_major_version "18.5.0"
+get_major_version() {
+    echo "${1%%.*}"
+}
+
+# Helper: Check if Node version is incompatible with this OS
+requires_node18_or_higher() {
+    local node_ver="$1"
+    [[ "$node_ver" == "lts" || "$node_ver" == "latest" || $(get_major_version "$node_ver") -ge 18 ]]
+}
+
+# Helper: Determine the appropriate non-root user
+determine_username() {
+    # If automatic detection is requested
+    if [[ $USERNAME == auto || $USERNAME == automatic ]]; then
+        USERNAME=""
+        local POSSIBLE_USERS=("vscode" "node" "codespace" "$(awk -v val=1000 -F ":" '$3==val{print $1}' /etc/passwd)")
+        for CURRENT_USER in "${POSSIBLE_USERS[@]}"; do
+            if id -u "${CURRENT_USER}" &>/dev/null; then
+                USERNAME=${CURRENT_USER}
+                return 0
+            fi
+        done
+        # No suitable user found, fallback to root
+        USERNAME=root
+    # If explicitly set to "none" or user doesn't exist
+    elif [[ $USERNAME == "none" ]] || ! id -u "$USERNAME" &>/dev/null; then
+        USERNAME=root
+    fi
+}
+
 install_yarn() {
+    local node_version=${1:-node}
+    
+    # Debian APT-based installation
     if [[ $ADJUSTED_ID == debian && $INSTALL_YARN_USING_APT == true ]]; then
-        # for backward compatibility with existing devcontainer features, install yarn
-        # via apt-get on Debian systems
-        if ! command -v yarn &>/dev/null; then
-            # Import key safely (new method rather than deprecated apt-key approach) and install
-            mkdir -p /etc/apt/keyrings
-            curl -fsSL https://dl.yarnpkg.com/debian/pubkey.gpg | gpg --dearmor --yes -o /etc/apt/keyrings/yarn-archive-keyring.gpg
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/yarn-archive-keyring.gpg] https://dl.yarnpkg.com/debian/ stable main" >/etc/apt/sources.list.d/yarn.list
-            apt-get update
-            apt-get -y install --no-install-recommends yarn
-        else
+        if command -v yarn &>/dev/null; then
             echo "Yarn is already installed."
+            return 0
         fi
-    else
-        local _ver=${1:-node}
-        # on non-debian systems or if user opted not to use APT, prefer corepack
-        # Fallback to npm based installation of yarn.
-        # But try to leverage corepack if possible
-        # From https://yarnpkg.com:
-        # The preferred way to manage Yarn is by-project and through Corepack, a tool
-        # shipped by default with Node.js. Modern releases of Yarn aren't meant to be
-        # installed globally, or from npm.
-        if ! bash -c "source '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && command -v yarn &>/dev/null"; then
-            if bash -c "source '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && command -v corepack &>/dev/null"; then
-                su "${USERNAME}" -c "umask 0002 && source '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && corepack enable"
-            fi
-            if ! bash -c "source '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && command -v yarn &>/dev/null"; then
-                # Yum/DNF want to install nodejs dependencies, we'll use NPM to install yarn
-                su "${USERNAME}" -c "umask 0002 && source '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && npm install --global yarn"
-            fi
-        else
-            echo "Yarn already installed."
-        fi
+        # Import key safely (new method rather than deprecated apt-key approach) and install
+        mkdir -p /etc/apt/keyrings
+        curl -fsSL https://dl.yarnpkg.com/debian/pubkey.gpg | gpg --dearmor --yes -o /etc/apt/keyrings/yarn-archive-keyring.gpg
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/yarn-archive-keyring.gpg] https://dl.yarnpkg.com/debian/ stable main" >/etc/apt/sources.list.d/yarn.list
+        apt-get update
+        apt-get -y install --no-install-recommends yarn
+        return 0
+    fi
+    
+    # Non-APT systems: prefer corepack, fallback to npm
+    if check_cmd_with_nvm "yarn" && \
+       bash -c "source '${NVM_DIR}/nvm.sh' && nvm use ${node_version} && command -v yarn &>/dev/null"; then
+        echo "Yarn already installed."
+        return 0
+    fi
+    
+    # Try enabling corepack
+    if bash -c "source '${NVM_DIR}/nvm.sh' && nvm use ${node_version} && command -v corepack &>/dev/null"; then
+        run_as_user_with_nvm "nvm use ${node_version} && corepack enable"
+    fi
+    
+    # Final check: if yarn still not available, use npm
+    if ! bash -c "source '${NVM_DIR}/nvm.sh' && nvm use ${node_version} && command -v yarn &>/dev/null"; then
+        # Yum/DNF want to install nodejs dependencies, we'll use NPM to install yarn
+        run_as_user_with_nvm "nvm use ${node_version} && npm install --global yarn"
     fi
 }
 
@@ -242,31 +298,14 @@ if ! command -v awk &>/dev/null; then
 fi
 
 # Determine the appropriate non-root user
-if [[ $USERNAME == auto || $USERNAME == automatic ]]; then
-    USERNAME=""
-    POSSIBLE_USERS=("vscode" "node" "codespace" "$(awk -v val=1000 -F ":" '$3==val{print $1}' /etc/passwd)")
-    for CURRENT_USER in "${POSSIBLE_USERS[@]}"; do
-        if id -u "${CURRENT_USER}" &>/dev/null; then
-            USERNAME=${CURRENT_USER}
-            break
-        fi
-    done
-    if [[ -z $USERNAME ]]; then
-        USERNAME=root
-    fi
-elif [[ $USERNAME == "none" ]] || ! id -u "$USERNAME" &>/dev/null; then
-    USERNAME=root
-fi
+determine_username
 
 # Ensure apt is in non-interactive to avoid prompts
 export DEBIAN_FRONTEND=noninteractive
 
-if [[ "${VERSION_CODENAME}" && bionic == *"${VERSION_CODENAME}"* || "rhel7" == *"${ADJUSTED_ID}${MAJOR_VERSION_ID}"* ]]; then
-    node_major_version=$(echo "${NODE_VERSION}" | cut -d . -f 1)
-    if [[ $node_major_version -ge 18 || $NODE_VERSION == lts || $NODE_VERSION == latest ]]; then
-        echo "(!) Unsupported distribution version '${VERSION_CODENAME}' for Node >= 18. Details: https://github.com/nodejs/node/issues/42351#issuecomment-1068424442"
-        exit 1
-    fi
+if is_unsupported_os_for_node18 && requires_node18_or_higher "$NODE_VERSION"; then
+    echo "(!) Unsupported distribution version '${VERSION_CODENAME}' for Node >= 18. Details: https://github.com/nodejs/node/issues/42351#issuecomment-1068424442"
+    exit 1
 fi
 
 # Install dependencies
@@ -353,7 +392,7 @@ if [[ ! -d $NVM_DIR ]]; then
 else
     echo "NVM already installed."
     if [[ $NODE_VERSION ]]; then
-        su "${USERNAME}" -c "umask 0002 && source '$NVM_DIR/nvm.sh' && nvm install '${NODE_VERSION}' && nvm alias default '${NODE_VERSION}'"
+        run_as_user_with_nvm "nvm install '${NODE_VERSION}' && nvm alias default '${NODE_VERSION}'"
     fi
 fi
 
@@ -369,14 +408,14 @@ fi
 if [[ $ADDITIONAL_VERSIONS ]]; then
     IFS="," read -r -a additional_versions <<<"$ADDITIONAL_VERSIONS"
     for ver in "${additional_versions[@]}"; do
-        su "${USERNAME}" -c "umask 0002 && source '$NVM_DIR/nvm.sh' && nvm install '${ver}'"
+        run_as_user_with_nvm "nvm install '${ver}'"
         # possibly install yarn (puts yarn in per-Node install on RHEL, uses system yarn on Debian)
         install_yarn "${ver}"
     done
 
     # Ensure $NODE_VERSION is on the $PATH
     if [[ $NODE_VERSION ]]; then
-        su "${USERNAME}" -c "umask 0002 && source '$NVM_DIR/nvm.sh' && nvm use default"
+        run_as_user_with_nvm "nvm use default"
     fi
 fi
 
@@ -400,35 +439,35 @@ fi
 # If enabled, verify "python3", "make", "gcc", "g++" commands are available so node-gyp works - https://github.com/nodejs/node-gyp
 if [[ $INSTALL_TOOLS_FOR_NODE_GYP == true ]]; then
     echo "Verifying node-gyp OS requirements..."
-    to_install=""
+    to_install=()
     if ! command -v make &>/dev/null; then
-        to_install="${to_install} make"
+        to_install+=("make")
     fi
     if ! command -v gcc &>/dev/null; then
-        to_install="${to_install} gcc"
+        to_install+=("gcc")
     fi
     if ! command -v g++ &>/dev/null; then
         if [[ $ADJUSTED_ID == "debian" ]]; then
-            to_install="${to_install} g++"
+            to_install+=("g++")
         elif [[ $ADJUSTED_ID == "rhel" ]]; then
-            to_install="${to_install} gcc-c++"
+            to_install+=("gcc-c++")
         fi
     fi
     if ! command -v python3 &>/dev/null; then
         if [[ $ADJUSTED_ID == "debian" ]]; then
-            to_install="${to_install} python3-minimal"
+            to_install+=("python3-minimal")
         elif [[ $ADJUSTED_ID == "rhel" ]]; then
-            to_install="${to_install} python3"
+            to_install+=("python3")
         fi
     fi
-    if [[ $to_install ]]; then
+    if ((${#to_install[@]})); then
         pkg_mgr_update
-        check_packages "${to_install}"
+        check_packages "${to_install[@]}"
     fi
 fi
 
 # Clean up
-su "${USERNAME}" -c "umask 0002 && source '$NVM_DIR/nvm.sh' && nvm clear-cache"
+run_as_user_with_nvm "nvm clear-cache"
 clean_up
 
 # Ensure privs are correct for installed node versions. Unfortunately the
