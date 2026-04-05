@@ -366,7 +366,7 @@ fi
 # default we can assume the nvm is the group owner of the nvm
 # directory and the sticky bit on directories so any installed
 # files will have the correct ownership (nvm)
-if [[ ! -z "${ADDITIONAL_VERSIONS}" ]]; then
+if [[ -n "${ADDITIONAL_VERSIONS}" ]]; then
     OLDIFS=$IFS
     IFS=","
     read -a additional_versions <<<"$ADDITIONAL_VERSIONS"
@@ -384,15 +384,15 @@ if [[ ! -z "${ADDITIONAL_VERSIONS}" ]]; then
 fi
 
 # Install pnpm
-if [[ ! -z "${PNPM_VERSION}" ]] && [[ "${PNPM_VERSION}" = "none" ]]; then
+if [[ -n "${PNPM_VERSION}" ]] && [[ "${PNPM_VERSION}" = "none" ]]; then
     echo "Ignoring installation of PNPM"
 else
     if bash -c ". '${NVM_DIR}/nvm.sh' && type npm >/dev/null 2>&1"; then
         (
             . "${NVM_DIR}/nvm.sh"
-            [[ ! -z "$http_proxy" ]] && npm set proxy="$http_proxy"
-            [[ ! -z "$https_proxy" ]] && npm set https-proxy="$https_proxy"
-            [[ ! -z "$no_proxy" ]] && npm set noproxy="$no_proxy"
+            [[ -n "$http_proxy" ]] && npm set proxy="$http_proxy"
+            [[ -n "$https_proxy" ]] && npm set https-proxy="$https_proxy"
+            [[ -n "$no_proxy" ]] && npm set noproxy="$no_proxy"
             npm install -g pnpm@"$PNPM_VERSION" --force
         )
     else
@@ -424,7 +424,7 @@ if [[ "${INSTALL_TOOLS_FOR_NODE_GYP}" = "true" ]]; then
             to_install="${to_install} python3"
         fi
     fi
-    if [[ ! -z "${to_install}" ]]; then
+    if [[ -n "${to_install}" ]]; then
         pkg_mgr_update
         check_packages "${to_install}"
     fi
