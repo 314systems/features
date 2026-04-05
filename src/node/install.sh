@@ -331,7 +331,7 @@ EOF
 export NVM_SYMLINK_CURRENT=true
 
 # Create nvm group to the user's UID or GID to change while still allowing access to nvm
-if ! cat /etc/group | grep -e "^nvm:" >/dev/null 2>&1; then
+if ! getent group nvm >/dev/null; then
     groupadd -r nvm
 fi
 usermod -a -G nvm "${USERNAME}"
