@@ -55,13 +55,13 @@ if [[ $ADJUSTED_ID == rhel && ${VERSION_CODENAME-} == centos7 ]]; then
 fi
 
 # Setup INSTALL_CMD & PKG_MGR_CMD
-if type apt-get >/dev/null 2>&1; then
+if command -v apt-get &>/dev/null; then
     PKG_MGR_CMD=apt-get
     INSTALL_CMD="${PKG_MGR_CMD} -y install --no-install-recommends"
-elif type microdnf >/dev/null 2>&1; then
+elif command -v microdnf &>/dev/null; then
     PKG_MGR_CMD=microdnf
     INSTALL_CMD="${PKG_MGR_CMD} -y install --refresh --best --nodocs --noplugins --setopt=install_weak_deps=0"
-elif type dnf >/dev/null 2>&1; then
+elif command -v dnf &>/dev/null; then
     PKG_MGR_CMD=dnf
     INSTALL_CMD="${PKG_MGR_CMD} -y install"
 else
@@ -149,13 +149,13 @@ pkg_mgr_update() {
 check_packages() {
     case $ADJUSTED_ID in
     debian)
-        if ! dpkg -s "$@" >/dev/null 2>&1; then
+        if ! dpkg -s "$@" &>/dev/null; then
             pkg_mgr_update
             ${INSTALL_CMD} "$@"
         fi
         ;;
     rhel)
-        if ! rpm -q "$@" >/dev/null 2>&1; then
+        if ! rpm -q "$@" &>/dev/null; then
             pkg_mgr_update
             ${INSTALL_CMD} "$@"
         fi
@@ -190,7 +190,7 @@ find_version_from_git_tags() {
             set -e
         fi
     fi
-    if [[ -z "${!variable_name}" ]] || ! echo "${version_list}" | grep "^${!variable_name//./\\.}$" >/dev/null 2>&1; then
+    if [[ -z "${!variable_name}" ]] || ! echo "${version_list}" | grep "^${!variable_name//./\\.}$" &>/dev/null; then
         echo -e "Invalid ${variable_name} value: ${requested_version}\nValid values:\n${version_list}" >&2
         exit 1
     fi
@@ -201,7 +201,7 @@ install_yarn() {
     if [[ $ADJUSTED_ID == debian && $INSTALL_YARN_USING_APT == true ]]; then
         # for backward compatibility with existing devcontainer features, install yarn
         # via apt-get on Debian systems
-        if ! type yarn >/dev/null 2>&1; then
+        if ! command -v yarn &>/dev/null; then
             # Import key safely (new method rather than deprecated apt-key approach) and install
             mkdir -p /etc/apt/keyrings
             curl -fsSL https://dl.yarnpkg.com/debian/pubkey.gpg | gpg --dearmor --yes -o /etc/apt/keyrings/yarn-archive-keyring.gpg
@@ -220,11 +220,11 @@ install_yarn() {
         # The preferred way to manage Yarn is by-project and through Corepack, a tool
         # shipped by default with Node.js. Modern releases of Yarn aren't meant to be
         # installed globally, or from npm.
-        if ! bash -c "source '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && type yarn >/dev/null 2>&1"; then
-            if bash -c "source '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && type corepack >/dev/null 2>&1"; then
+        if ! bash -c "source '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && command -v yarn &>/dev/null"; then
+            if bash -c "source '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && command -v corepack &>/dev/null"; then
                 su "${USERNAME}" -c "umask 0002 && source '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && corepack enable"
             fi
-            if ! bash -c "source '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && type yarn >/dev/null 2>&1"; then
+            if ! bash -c "source '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && command -v yarn &>/dev/null"; then
                 # Yum/DNF want to install nodejs dependencies, we'll use NPM to install yarn
                 su "${USERNAME}" -c "umask 0002 && source '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && npm install --global yarn"
             fi
@@ -237,7 +237,7 @@ install_yarn() {
 # Mariner does not have awk installed by default, this can cause
 # problems if the username is auto* and later when we try to install
 # node via npm.
-if ! type awk >/dev/null 2>&1; then
+if ! command -v awk &>/dev/null; then
     check_packages awk
 fi
 
@@ -246,7 +246,7 @@ if [[ $USERNAME == auto || $USERNAME == automatic ]]; then
     USERNAME=""
     POSSIBLE_USERS=("vscode" "node" "codespace" "$(awk -v val=1000 -F ":" '$3==val{print $1}' /etc/passwd)")
     for CURRENT_USER in "${POSSIBLE_USERS[@]}"; do
-        if id -u "${CURRENT_USER}" >/dev/null 2>&1; then
+        if id -u "${CURRENT_USER}" &>/dev/null; then
             USERNAME=${CURRENT_USER}
             break
         fi
@@ -254,7 +254,7 @@ if [[ $USERNAME == auto || $USERNAME == automatic ]]; then
     if [[ -z $USERNAME ]]; then
         USERNAME=root
     fi
-elif [[ $USERNAME == "none" ]] || ! id -u "$USERNAME" >/dev/null 2>&1; then
+elif [[ $USERNAME == "none" ]] || ! id -u "$USERNAME" &>/dev/null; then
     USERNAME=root
 fi
 
@@ -278,13 +278,13 @@ rhel)
     check_packages ca-certificates tar gnupg2 which findutils util-linux tar
     # minimal RHEL installs may not include curl, or includes curl-minimal instead.
     # Install curl if the "curl" command is not present.
-    if ! type curl >/dev/null 2>&1; then
+    if ! command -v curl &>/dev/null; then
         check_packages curl
     fi
     ;;
 esac
 
-if ! type git >/dev/null 2>&1; then
+if ! command -v git &>/dev/null; then
     check_packages git
 fi
 
@@ -384,7 +384,7 @@ fi
 if [[ $PNPM_VERSION && $PNPM_VERSION == none ]]; then
     echo "Ignoring installation of PNPM"
 else
-    if bash -c "source '${NVM_DIR}/nvm.sh' && type npm >/dev/null 2>&1"; then
+    if bash -c "source '${NVM_DIR}/nvm.sh' && command -v npm &>/dev/null"; then
         (
             source "${NVM_DIR}/nvm.sh"
             [[ "$http_proxy" ]] && npm set proxy="$http_proxy"
@@ -401,20 +401,20 @@ fi
 if [[ $INSTALL_TOOLS_FOR_NODE_GYP == true ]]; then
     echo "Verifying node-gyp OS requirements..."
     to_install=""
-    if ! type make >/dev/null 2>&1; then
+    if ! command -v make &>/dev/null; then
         to_install="${to_install} make"
     fi
-    if ! type gcc >/dev/null 2>&1; then
+    if ! command -v gcc &>/dev/null; then
         to_install="${to_install} gcc"
     fi
-    if ! type g++ >/dev/null 2>&1; then
+    if ! command -v g++ &>/dev/null; then
         if [[ $ADJUSTED_ID == "debian" ]]; then
             to_install="${to_install} g++"
         elif [[ $ADJUSTED_ID == "rhel" ]]; then
             to_install="${to_install} gcc-c++"
         fi
     fi
-    if ! type python3 >/dev/null 2>&1; then
+    if ! command -v python3 &>/dev/null; then
         if [[ $ADJUSTED_ID == "debian" ]]; then
             to_install="${to_install} python3-minimal"
         elif [[ $ADJUSTED_ID == "rhel" ]]; then
