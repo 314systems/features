@@ -369,7 +369,7 @@ fi
 if [[ -n "${ADDITIONAL_VERSIONS}" ]]; then
     OLDIFS=$IFS
     IFS=","
-    read -a additional_versions <<<"$ADDITIONAL_VERSIONS"
+    read -a -r additional_versions <<<"$ADDITIONAL_VERSIONS"
     for ver in "${additional_versions[@]}"; do
         su "${USERNAME}" -c "umask 0002 && source '$NVM_DIR/nvm.sh' && nvm install '${ver}'"
         # possibly install yarn (puts yarn in per-Node install on RHEL, uses system yarn on Debian)
