@@ -168,57 +168,67 @@ find_version_from_git_tags() {
     local variable_name=$1
     local requested_version=${!variable_name}
     [[ $requested_version == none ]] && return
+
     local repository=$2
     local prefix=${3:-"tags/v"}
     local separator=${4:-"."}
     local last_part_optional=${5:-"false"}
-    if [[ "$(echo "${requested_version}" | grep -o "." | wc -l)" != "2" ]]; then
-        local escaped_separator=${separator//./\\.}
-        local last_part
-        if [[ $last_part_optional == true ]]; then
-            last_part="(${escaped_separator}[0-9]+)?"
-        else
-            last_part="${escaped_separator}[0-9]+"
-        fi
-        local regex="${prefix}\\K[0-9]+${escaped_separator}[0-9]+${last_part}$"
-        local version_list="$(git ls-remote --tags "${repository}" | grep -oP "${regex}" | tr -d ' ' | tr "${separator}" "." | sort -rV)"
-        if [[ $requested_version =~ ^(latest|current|lts)$ ]]; then
-            declare -g "${variable_name}"="$(echo "${version_list}" | head -n 1)"
-        else
-            set +e
-            declare -g "${variable_name}"="$(echo "${version_list}" | grep -E -m 1 "^${requested_version//./\\.}([\\.\\s]|$)")"
-            set -e
-        fi
+
+    local escaped_separator=${separator//./\\.}
+    local last_part_regex
+    if [[ $last_part_optional == true ]]; then
+        last_part_regex="(${escaped_separator}[0-9]+)?"
+    else
+        last_part_regex="${escaped_separator}[0-9]+"
     fi
-    if [[ -z "${!variable_name}" ]] || ! echo "${version_list}" | grep "^${!variable_name//./\\.}$" &>/dev/null; then
-        echo -e "Invalid ${variable_name} value: ${requested_version}\nValid values:\n${version_list}" >&2
+
+    local regex="${prefix}\\K[0-9]+${escaped_separator}[0-9]+${last_part_regex}$"
+    local version_list
+    version_list="$(git ls-remote --tags "${repository}" | grep -oP "${regex}" | tr -d ' ' | tr "${separator}" "." | sort -rV)"
+
+    if [[ $requested_version =~ ^(latest|current|lts)$ ]]; then
+        declare -g "${variable_name}"="${version_list%%$'\n'*}"
+    elif [[ $requested_version != *.*.* ]]; then
+        local matched_version
+        matched_version="$(grep -E -m 1 "^${requested_version//./\\.}([\\.[:space:]]|$)" <<<"${version_list}" || true)"
+        declare -g "${variable_name}"="${matched_version}"
+    else
+        declare -g "${variable_name}"="${requested_version}"
+    fi
+
+    if [[ -z "${!variable_name}" ]] || ! grep -Fqx -- "${!variable_name}" <<<"${version_list}"; then
+        printf "Invalid %s value: %s\nValid values:\n%s\n" "${variable_name}" "${requested_version}" "${version_list}" >&2
         exit 1
     fi
-    echo "${variable_name}=${!variable_name}"
+
+    printf "%s=%s\n" "${variable_name}" "${!variable_name}"
 }
 
 # Helper: Run a command as a user with NVM environment
 # Usage: run_as_user_with_nvm "nvm install 18"
 run_as_user_with_nvm() {
-    su "${USERNAME}" -c "umask 0002 && source '${NVM_DIR}/nvm.sh' && $*"
+    local cmd="$1"
+    su "${USERNAME}" -c "umask 0002 && source '${NVM_DIR}/nvm.sh' && ${cmd}"
 }
 
 # Helper: Run a command as a user with umask
 # Usage: run_as_user "some command"
 run_as_user() {
-    su "${USERNAME}" -c "umask 0002 && $*"
+    local cmd="$1"
+    su "${USERNAME}" -c "umask 0002 && ${cmd}"
 }
 
 # Helper: Check if command exists in current shell with NVM
 # Usage: check_cmd_with_nvm "yarn"
 check_cmd_with_nvm() {
-    bash -c "source '${NVM_DIR}/nvm.sh' && command -v $1 &>/dev/null"
+    local cmd_name="$1"
+    bash -c "source '${NVM_DIR}/nvm.sh' && command -v '${cmd_name}' &>/dev/null"
 }
 
 # Helper: Check if current OS is unsupported for Node >= 18
 is_unsupported_os_for_node18() {
-    [[ "$VERSION_CODENAME" == *"bionic"* ]] || \
-    [[ "${ADJUSTED_ID}${MAJOR_VERSION_ID}" == "rhel7" ]]
+    [[ "$VERSION_CODENAME" == *"bionic"* ]] ||
+        [[ "${ADJUSTED_ID}${MAJOR_VERSION_ID}" == "rhel7" ]]
 }
 
 # Helper: Get major version from version string
@@ -255,7 +265,7 @@ determine_username() {
 
 install_yarn() {
     local node_version=${1:-node}
-    
+
     # Debian APT-based installation
     if [[ $ADJUSTED_ID == debian && $INSTALL_YARN_USING_APT == true ]]; then
         if command -v yarn &>/dev/null; then
@@ -270,19 +280,19 @@ install_yarn() {
         apt-get -y install --no-install-recommends yarn
         return 0
     fi
-    
+
     # Non-APT systems: prefer corepack, fallback to npm
-    if check_cmd_with_nvm "yarn" && \
-       bash -c "source '${NVM_DIR}/nvm.sh' && nvm use ${node_version} && command -v yarn &>/dev/null"; then
+    if check_cmd_with_nvm "yarn" &&
+        bash -c "source '${NVM_DIR}/nvm.sh' && nvm use ${node_version} && command -v yarn &>/dev/null"; then
         echo "Yarn already installed."
         return 0
     fi
-    
+
     # Try enabling corepack
     if bash -c "source '${NVM_DIR}/nvm.sh' && nvm use ${node_version} && command -v corepack &>/dev/null"; then
         run_as_user_with_nvm "nvm use ${node_version} && corepack enable"
     fi
-    
+
     # Final check: if yarn still not available, use npm
     if ! bash -c "source '${NVM_DIR}/nvm.sh' && nvm use ${node_version} && command -v yarn &>/dev/null"; then
         # Yum/DNF want to install nodejs dependencies, we'll use NPM to install yarn
@@ -345,11 +355,16 @@ set -e
 umask 0002
 # Do not update profile - we'll do this manually
 export PROFILE=/dev/null
-curl -so- "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.sh" | bash ||  {
-    PREV_NVM_VERSION=$(curl -s https://api.github.com/repos/nvm-sh/nvm/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
-    curl -so- "https://raw.githubusercontent.com/nvm-sh/nvm/\${PREV_NVM_VERSION}/install.sh" | bash
-    NVM_VERSION="\${PREV_NVM_VERSION}"
+install_nvm_from_tag() {
+    local tag="\$1"
+    curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/\${tag}/install.sh" | bash
 }
+
+if ! install_nvm_from_tag "v${NVM_VERSION}"; then
+    PREV_NVM_VERSION=$(curl -fsSL https://api.github.com/repos/nvm-sh/nvm/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+    install_nvm_from_tag "\${PREV_NVM_VERSION}"
+    NVM_VERSION="\${PREV_NVM_VERSION#v}"
+fi
 [[ -s "${NVM_DIR}/nvm.sh" ]] && source "${NVM_DIR}/nvm.sh"
 if [[ $NODE_VERSION ]]; then
     nvm alias default "${NODE_VERSION}"
@@ -361,8 +376,9 @@ EOF
 nvm_rc_snippet="$(
     cat <<EOF
 export NVM_DIR="${NVM_DIR}"
-[[ -s "\$NVM_DIR/nvm.sh" ]] && source "\$NVM_DIR/nvm.sh"
-[[ -s "\$NVM_DIR/bash_completion" ]] && source "\$NVM_DIR/bash_completion"
+for nvm_init_script in "\$NVM_DIR/nvm.sh" "\$NVM_DIR/bash_completion"; do
+    [[ -s "\${nvm_init_script}" ]] && source "\${nvm_init_script}"
+done
 EOF
 )"
 
