@@ -29,7 +29,7 @@ if [[ "$(id -u)" -ne 0 ]]; then
 fi
 
 # Bring in ID, ID_LIKE, VERSION_ID, VERSION_CODENAME
-. /etc/os-release
+source /etc/os-release
 # Get an adjusted ID independent of distro variants
 MAJOR_VERSION_ID=$(echo "${VERSION_ID}" | cut -d . -f 1)
 if [[ "${ID}" = "debian" ]] || [[ "${ID_LIKE}" = "debian" ]]; then
@@ -220,13 +220,13 @@ install_yarn() {
         # The preferred way to manage Yarn is by-project and through Corepack, a tool
         # shipped by default with Node.js. Modern releases of Yarn aren't meant to be
         # installed globally, or from npm.
-        if ! bash -c ". '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && type yarn >/dev/null 2>&1"; then
-            if bash -c ". '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && type corepack >/dev/null 2>&1"; then
-                su "${USERNAME}" -c "umask 0002 && . '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && corepack enable"
+        if ! bash -c "source '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && type yarn >/dev/null 2>&1"; then
+            if bash -c "source '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && type corepack >/dev/null 2>&1"; then
+                su "${USERNAME}" -c "umask 0002 && source '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && corepack enable"
             fi
-            if ! bash -c ". '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && type yarn >/dev/null 2>&1"; then
+            if ! bash -c "source '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && type yarn >/dev/null 2>&1"; then
                 # Yum/DNF want to install nodejs dependencies, we'll use NPM to install yarn
-                su "${USERNAME}" -c "umask 0002 && . '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && npm install --global yarn"
+                su "${USERNAME}" -c "umask 0002 && source '${NVM_DIR}/nvm.sh' && nvm use ${_ver} && npm install --global yarn"
             fi
         else
             echo "Yarn already installed."
@@ -322,8 +322,8 @@ EOF
 nvm_rc_snippet="$(
     cat <<EOF
 export NVM_DIR="${NVM_DIR}"
-[ -s "\$NVM_DIR/nvm.sh" ] && . "\$NVM_DIR/nvm.sh"
-[ -s "\$NVM_DIR/bash_completion" ] && . "\$NVM_DIR/bash_completion"
+[ -s "\$NVM_DIR/nvm.sh" ] && source "\$NVM_DIR/nvm.sh"
+[ -s "\$NVM_DIR/bash_completion" ] && source "\$NVM_DIR/bash_completion"
 EOF
 )"
 
@@ -353,7 +353,7 @@ if [[ ! -d "${NVM_DIR}" ]]; then
 else
     echo "NVM already installed."
     if [[ "${NODE_VERSION}" != "" ]]; then
-        su "${USERNAME}" -c "umask 0002 && . '$NVM_DIR/nvm.sh' && nvm install '${NODE_VERSION}' && nvm alias default '${NODE_VERSION}'"
+        su "${USERNAME}" -c "umask 0002 && source '$NVM_DIR/nvm.sh' && nvm install '${NODE_VERSION}' && nvm alias default '${NODE_VERSION}'"
     fi
 fi
 
@@ -371,14 +371,14 @@ if [[ -n "${ADDITIONAL_VERSIONS}" ]]; then
     IFS=","
     read -a additional_versions <<<"$ADDITIONAL_VERSIONS"
     for ver in "${additional_versions[@]}"; do
-        su "${USERNAME}" -c "umask 0002 && . '$NVM_DIR/nvm.sh' && nvm install '${ver}'"
+        su "${USERNAME}" -c "umask 0002 && source '$NVM_DIR/nvm.sh' && nvm install '${ver}'"
         # possibly install yarn (puts yarn in per-Node install on RHEL, uses system yarn on Debian)
         install_yarn "${ver}"
     done
 
     # Ensure $NODE_VERSION is on the $PATH
     if [[ "${NODE_VERSION}" != "" ]]; then
-        su "${USERNAME}" -c "umask 0002 && . '$NVM_DIR/nvm.sh' && nvm use default"
+        su "${USERNAME}" -c "umask 0002 && source '$NVM_DIR/nvm.sh' && nvm use default"
     fi
     IFS=$OLDIFS
 fi
@@ -387,9 +387,9 @@ fi
 if [[ -n "${PNPM_VERSION}" ]] && [[ "${PNPM_VERSION}" = "none" ]]; then
     echo "Ignoring installation of PNPM"
 else
-    if bash -c ". '${NVM_DIR}/nvm.sh' && type npm >/dev/null 2>&1"; then
+    if bash -c "source '${NVM_DIR}/nvm.sh' && type npm >/dev/null 2>&1"; then
         (
-            . "${NVM_DIR}/nvm.sh"
+            source "${NVM_DIR}/nvm.sh"
             [[ -n "$http_proxy" ]] && npm set proxy="$http_proxy"
             [[ -n "$https_proxy" ]] && npm set https-proxy="$https_proxy"
             [[ -n "$no_proxy" ]] && npm set noproxy="$no_proxy"
@@ -431,7 +431,7 @@ if [[ "${INSTALL_TOOLS_FOR_NODE_GYP}" = "true" ]]; then
 fi
 
 # Clean up
-su "${USERNAME}" -c "umask 0002 && . '$NVM_DIR/nvm.sh' && nvm clear-cache"
+su "${USERNAME}" -c "umask 0002 && source '$NVM_DIR/nvm.sh' && nvm clear-cache"
 clean_up
 
 # Ensure privs are correct for installed node versions. Unfortunately the
