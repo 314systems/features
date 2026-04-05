@@ -122,12 +122,12 @@ pkg_mgr_update() {
         ;;
     rhel)
         if [[ ${PKG_MGR_CMD} = "microdnf" ]]; then
-            if [[ "$(ls /var/cache/yum/* 2>/dev/null | wc -l)" = 0 ]]; then
+            if [[ -z "$(find /var/cache/yum/ -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]; then
                 echo "Running ${PKG_MGR_CMD} makecache ..."
                 ${PKG_MGR_CMD} makecache
             fi
         else
-            if [[ "$(ls /var/cache/${PKG_MGR_CMD}/* 2>/dev/null | wc -l)" = 0 ]]; then
+            if [[ -z "$(find /var/cache/${PKG_MGR_CMD}/ -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]; then
                 echo "Running ${PKG_MGR_CMD} check-update ..."
                 set +e
                 stderr_messages=$(${PKG_MGR_CMD} -q check-update 2>&1)
