@@ -32,11 +32,11 @@ fi
 source /etc/os-release
 # Get an adjusted ID independent of distro variants
 MAJOR_VERSION_ID=$(echo "${VERSION_ID}" | cut -d . -f 1)
-if [[ "${ID}" = "debian" ]] || [[ "${ID_LIKE}" = "debian" ]]; then
+if [[ $ID == debian || ${ID_LIKE-} == debian ]]; then
     ADJUSTED_ID="debian"
-elif [[ "${ID}" = "rhel" || "${ID}" = "fedora" || "${ID}" = "mariner" || "${ID_LIKE}" = *"rhel"* || "${ID_LIKE}" = *"fedora"* || "${ID_LIKE}" = *"mariner"* ]]; then
+elif [[ $ID == rhel || $ID == fedora || $ID == mariner || ${ID_LIKE-} == *rhel* || ${ID_LIKE-} == *fedora* || ${ID_LIKE-} == *mariner* ]]; then
     ADJUSTED_ID="rhel"
-    if [[ "${ID}" = "rhel" ]] || [[ "${ID}" = *"alma"* ]] || [[ "${ID}" = *"rocky"* ]]; then
+    if [[ $ID == rhel || $ID == *alma* || $ID == *rocky* ]]; then
         VERSION_CODENAME="rhel${MAJOR_VERSION_ID}"
     else
         VERSION_CODENAME="${ID}${MAJOR_VERSION_ID}"
@@ -46,7 +46,7 @@ else
     exit 1
 fi
 
-if [[ "${ADJUSTED_ID}" = "rhel" ]] && [[ "${VERSION_CODENAME-}" = "centos7" ]]; then
+if [[ $ADJUSTED_ID == rhel && ${VERSION_CODENAME-} == centos7 ]]; then
     # As of 1 July 2024, mirrorlist.centos.org no longer exists.
     # Update the repo files to reference vault.centos.org.
     sed -i s/mirror.centos.org/vault.centos.org/g /etc/yum.repos.d/*.repo
@@ -71,7 +71,7 @@ fi
 
 # Clean up
 clean_up() {
-    case ${ADJUSTED_ID} in
+    case $ADJUSTED_ID in
     debian)
         rm -rf /var/lib/apt/lists/*
         ;;
@@ -91,7 +91,7 @@ chmod +x /etc/profile.d/00-restore-env.sh
 updaterc() {
     local _bashrc
     local _zshrc
-    if [[ "${UPDATE_RC}" = "true" ]]; then
+    if [[ $UPDATE_RC == true ]]; then
         case $ADJUSTED_ID in
         debian)
             _bashrc=/etc/bash.bashrc
@@ -115,13 +115,13 @@ updaterc() {
 pkg_mgr_update() {
     case $ADJUSTED_ID in
     debian)
-        if [[ "$(find /var/lib/apt/lists/* 2>/dev/null | wc -l)" = "0" ]]; then
+        if [[ "$(find /var/lib/apt/lists/* 2>/dev/null | wc -l)" == "0" ]]; then
             echo "Running apt-get update..."
             ${PKG_MGR_CMD} update -y
         fi
         ;;
     rhel)
-        if [[ ${PKG_MGR_CMD} = "microdnf" ]]; then
+        if [[ $PKG_MGR_CMD == microdnf ]]; then
             if [[ -z "$(find /var/cache/yum/ -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]; then
                 echo "Running ${PKG_MGR_CMD} makecache ..."
                 ${PKG_MGR_CMD} makecache
@@ -133,7 +133,7 @@ pkg_mgr_update() {
                 stderr_messages=$(${PKG_MGR_CMD} -q check-update 2>&1)
                 rc=$?
                 # centos 7 sometimes returns a status of 100 when it appears to work.
-                if [[ $rc != 0 ]] && [[ $rc != 100 ]]; then
+                if ((rc != 0 && rc != 100)); then
                     echo "(Error) ${PKG_MGR_CMD} check-update produced the following error message(s):"
                     echo "${stderr_messages}"
                     exit 1
@@ -147,7 +147,7 @@ pkg_mgr_update() {
 
 # Checks if packages are installed and installs them if not
 check_packages() {
-    case ${ADJUSTED_ID} in
+    case $ADJUSTED_ID in
     debian)
         if ! dpkg -s "$@" >/dev/null 2>&1; then
             pkg_mgr_update
@@ -167,7 +167,7 @@ check_packages() {
 find_version_from_git_tags() {
     local variable_name=$1
     local requested_version=${!variable_name}
-    if [[ "${requested_version}" = "none" ]]; then return; fi
+    [[ $requested_version == none ]] && return
     local repository=$2
     local prefix=${3:-"tags/v"}
     local separator=${4:-"."}
@@ -175,14 +175,14 @@ find_version_from_git_tags() {
     if [[ "$(echo "${requested_version}" | grep -o "." | wc -l)" != "2" ]]; then
         local escaped_separator=${separator//./\\.}
         local last_part
-        if [[ "${last_part_optional}" = "true" ]]; then
+        if [[ $last_part_optional == true ]]; then
             last_part="(${escaped_separator}[0-9]+)?"
         else
             last_part="${escaped_separator}[0-9]+"
         fi
         local regex="${prefix}\\K[0-9]+${escaped_separator}[0-9]+${last_part}$"
         local version_list="$(git ls-remote --tags "${repository}" | grep -oP "${regex}" | tr -d ' ' | tr "${separator}" "." | sort -rV)"
-        if [[ "${requested_version}" = "latest" ]] || [[ "${requested_version}" = "current" ]] || [[ "${requested_version}" = "lts" ]]; then
+        if [[ $requested_version =~ ^(latest|current|lts)$ ]]; then
             declare -g "${variable_name}"="$(echo "${version_list}" | head -n 1)"
         else
             set +e
@@ -198,7 +198,7 @@ find_version_from_git_tags() {
 }
 
 install_yarn() {
-    if [[ "${ADJUSTED_ID}" = "debian" ]] && [[ "${INSTALL_YARN_USING_APT}" = "true" ]]; then
+    if [[ $ADJUSTED_ID == debian && $INSTALL_YARN_USING_APT == true ]]; then
         # for backward compatibility with existing devcontainer features, install yarn
         # via apt-get on Debian systems
         if ! type yarn >/dev/null 2>&1; then
@@ -242,7 +242,7 @@ if ! type awk >/dev/null 2>&1; then
 fi
 
 # Determine the appropriate non-root user
-if [[ "${USERNAME}" = "auto" ]] || [[ "${USERNAME}" = "automatic" ]]; then
+if [[ $USERNAME == auto || $USERNAME == automatic ]]; then
     USERNAME=""
     POSSIBLE_USERS=("vscode" "node" "codespace" "$(awk -v val=1000 -F ":" '$3==val{print $1}' /etc/passwd)")
     for CURRENT_USER in "${POSSIBLE_USERS[@]}"; do
@@ -251,19 +251,19 @@ if [[ "${USERNAME}" = "auto" ]] || [[ "${USERNAME}" = "automatic" ]]; then
             break
         fi
     done
-    if [[ "${USERNAME}" = "" ]]; then
+    if [[ -z $USERNAME ]]; then
         USERNAME=root
     fi
-elif [[ "${USERNAME}" = "none" ]] || ! id -u "${USERNAME}" >/dev/null 2>&1; then
+elif [[ $USERNAME == "none" ]] || ! id -u "$USERNAME" >/dev/null 2>&1; then
     USERNAME=root
 fi
 
 # Ensure apt is in non-interactive to avoid prompts
 export DEBIAN_FRONTEND=noninteractive
 
-if { [[ -n "${VERSION_CODENAME}" ]] && [[ "bionic" = *"${VERSION_CODENAME}"* ]]; } || [[ "rhel7" = *"${ADJUSTED_ID}${MAJOR_VERSION_ID}"* ]]; then
+if [[ "${VERSION_CODENAME}" && bionic == *"${VERSION_CODENAME}"* || "rhel7" == *"${ADJUSTED_ID}${MAJOR_VERSION_ID}"* ]]; then
     node_major_version=$(echo "${NODE_VERSION}" | cut -d . -f 1)
-    if [[ "${node_major_version}" -ge 18 ]] || [[ "${NODE_VERSION}" = "lts" ]] || [[ "${NODE_VERSION}" = "latest" ]]; then
+    if [[ $node_major_version -ge 18 || $NODE_VERSION == lts || $NODE_VERSION == latest ]]; then
         echo "(!) Unsupported distribution version '${VERSION_CODENAME}' for Node >= 18. Details: https://github.com/nodejs/node/issues/42351#issuecomment-1068424442"
         exit 1
     fi
@@ -289,11 +289,11 @@ if ! type git >/dev/null 2>&1; then
 fi
 
 # Adjust node version if required
-if [[ "${NODE_VERSION}" = "none" ]]; then
+if [[ $NODE_VERSION == none ]]; then
     export NODE_VERSION=
-elif [[ "${NODE_VERSION}" = "lts" ]]; then
+elif [[ $NODE_VERSION == lts ]]; then
     export NODE_VERSION="lts/*"
-elif [[ "${NODE_VERSION}" = "latest" ]]; then
+elif [[ $NODE_VERSION == latest ]]; then
     export NODE_VERSION="node"
 fi
 
@@ -312,7 +312,7 @@ curl -so- "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.
     NVM_VERSION="\${PREV_NVM_VERSION}"
 }
 [[ -s "${NVM_DIR}/nvm.sh" ]] && source "${NVM_DIR}/nvm.sh"
-if [[ "${NODE_VERSION}" != "" ]]; then
+if [[ $NODE_VERSION ]]; then
     nvm alias default "${NODE_VERSION}"
 fi
 EOF
@@ -340,25 +340,25 @@ usermod -a -G nvm "${USERNAME}"
 # use nvm to install the specified node version. Always use
 # umask 0002 so that everything is u+rw,g+rw for both owner and group
 umask 0002
-if [[ ! -d "${NVM_DIR}" ]]; then
+if [[ ! -d $NVM_DIR ]]; then
     # Create nvm dir, and set sticky bit
     mkdir -p "${NVM_DIR}"
     chown "${USERNAME}:nvm" "${NVM_DIR}"
     chmod g+rws "${NVM_DIR}"
     su "${USERNAME}" -c "${nvm_install_snippet}" 2>&1
     # Update rc files
-    if [[ "${UPDATE_RC}" = "true" ]]; then
+    if [[ $UPDATE_RC == true ]]; then
         updaterc "${nvm_rc_snippet}"
     fi
 else
     echo "NVM already installed."
-    if [[ "${NODE_VERSION}" != "" ]]; then
+    if [[ $NODE_VERSION ]]; then
         su "${USERNAME}" -c "umask 0002 && source '$NVM_DIR/nvm.sh' && nvm install '${NODE_VERSION}' && nvm alias default '${NODE_VERSION}'"
     fi
 fi
 
 # Possibly install yarn (puts yarn in per-Node install on RHEL, uses system yarn on Debian)
-if [[ -n "${NODE_VERSION}" ]] && [[ "${NODE_VERSION}" != "none" ]]; then
+if [[ $NODE_VERSION && $NODE_VERSION != none ]]; then
     install_yarn
 fi
 
@@ -366,10 +366,8 @@ fi
 # default we can assume the nvm is the group owner of the nvm
 # directory and the sticky bit on directories so any installed
 # files will have the correct ownership (nvm)
-if [[ -n "${ADDITIONAL_VERSIONS}" ]]; then
-    OLDIFS=$IFS
-    IFS=","
-    read -a -r additional_versions <<<"$ADDITIONAL_VERSIONS"
+if [[ $ADDITIONAL_VERSIONS ]]; then
+    IFS="," read -r -a additional_versions <<<"$ADDITIONAL_VERSIONS"
     for ver in "${additional_versions[@]}"; do
         su "${USERNAME}" -c "umask 0002 && source '$NVM_DIR/nvm.sh' && nvm install '${ver}'"
         # possibly install yarn (puts yarn in per-Node install on RHEL, uses system yarn on Debian)
@@ -377,22 +375,21 @@ if [[ -n "${ADDITIONAL_VERSIONS}" ]]; then
     done
 
     # Ensure $NODE_VERSION is on the $PATH
-    if [[ "${NODE_VERSION}" != "" ]]; then
+    if [[ $NODE_VERSION ]]; then
         su "${USERNAME}" -c "umask 0002 && source '$NVM_DIR/nvm.sh' && nvm use default"
     fi
-    IFS=$OLDIFS
 fi
 
 # Install pnpm
-if [[ -n "${PNPM_VERSION}" ]] && [[ "${PNPM_VERSION}" = "none" ]]; then
+if [[ $PNPM_VERSION && $PNPM_VERSION == none ]]; then
     echo "Ignoring installation of PNPM"
 else
     if bash -c "source '${NVM_DIR}/nvm.sh' && type npm >/dev/null 2>&1"; then
         (
             source "${NVM_DIR}/nvm.sh"
-            [[ -n "$http_proxy" ]] && npm set proxy="$http_proxy"
-            [[ -n "$https_proxy" ]] && npm set https-proxy="$https_proxy"
-            [[ -n "$no_proxy" ]] && npm set noproxy="$no_proxy"
+            [[ "$http_proxy" ]] && npm set proxy="$http_proxy"
+            [[ "$https_proxy" ]] && npm set https-proxy="$https_proxy"
+            [[ "$no_proxy" ]] && npm set noproxy="$no_proxy"
             npm install -g pnpm@"$PNPM_VERSION" --force
         )
     else
@@ -401,7 +398,7 @@ else
 fi
 
 # If enabled, verify "python3", "make", "gcc", "g++" commands are available so node-gyp works - https://github.com/nodejs/node-gyp
-if [[ "${INSTALL_TOOLS_FOR_NODE_GYP}" = "true" ]]; then
+if [[ $INSTALL_TOOLS_FOR_NODE_GYP == true ]]; then
     echo "Verifying node-gyp OS requirements..."
     to_install=""
     if ! type make >/dev/null 2>&1; then
@@ -411,20 +408,20 @@ if [[ "${INSTALL_TOOLS_FOR_NODE_GYP}" = "true" ]]; then
         to_install="${to_install} gcc"
     fi
     if ! type g++ >/dev/null 2>&1; then
-        if [[ ${ADJUSTED_ID} = "debian" ]]; then
+        if [[ $ADJUSTED_ID == "debian" ]]; then
             to_install="${to_install} g++"
-        elif [[ ${ADJUSTED_ID} = "rhel" ]]; then
+        elif [[ $ADJUSTED_ID == "rhel" ]]; then
             to_install="${to_install} gcc-c++"
         fi
     fi
     if ! type python3 >/dev/null 2>&1; then
-        if [[ ${ADJUSTED_ID} = "debian" ]]; then
+        if [[ $ADJUSTED_ID == "debian" ]]; then
             to_install="${to_install} python3-minimal"
-        elif [[ ${ADJUSTED_ID} = "rhel" ]]; then
+        elif [[ $ADJUSTED_ID == "rhel" ]]; then
             to_install="${to_install} python3"
         fi
     fi
-    if [[ -n "${to_install}" ]]; then
+    if [[ $to_install ]]; then
         pkg_mgr_update
         check_packages "${to_install}"
     fi
