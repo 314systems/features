@@ -311,8 +311,8 @@ curl -so- "https://raw.githubusercontent.com/nvm-sh/nvm/v${NVM_VERSION}/install.
     curl -so- "https://raw.githubusercontent.com/nvm-sh/nvm/\${PREV_NVM_VERSION}/install.sh" | bash
     NVM_VERSION="\${PREV_NVM_VERSION}"
 }
-[ -s "${NVM_DIR}/nvm.sh" ] && source "${NVM_DIR}/nvm.sh"
-if [ "${NODE_VERSION}" != "" ]; then
+[[ -s "${NVM_DIR}/nvm.sh" ]] && source "${NVM_DIR}/nvm.sh"
+if [[ "${NODE_VERSION}" != "" ]]; then
     nvm alias default "${NODE_VERSION}"
 fi
 EOF
@@ -322,8 +322,8 @@ EOF
 nvm_rc_snippet="$(
     cat <<EOF
 export NVM_DIR="${NVM_DIR}"
-[ -s "\$NVM_DIR/nvm.sh" ] && source "\$NVM_DIR/nvm.sh"
-[ -s "\$NVM_DIR/bash_completion" ] && source "\$NVM_DIR/bash_completion"
+[[ -s "\$NVM_DIR/nvm.sh" ]] && source "\$NVM_DIR/nvm.sh"
+[[ -s "\$NVM_DIR/bash_completion" ]] && source "\$NVM_DIR/bash_completion"
 EOF
 )"
 
